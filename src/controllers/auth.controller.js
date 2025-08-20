@@ -83,6 +83,27 @@ const login = async (req, res) => {
   }
 };
 
+const sendMailWithRetry = async (
+  transporter,
+  mailOptions,
+  retries = 3,
+  delay = 2000
+) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await transporter.sendMail(mailOptions); // sukses langsung return
+    } catch (error) {
+      console.error(`Sending attempt ${attempt} failed: ${error.message}`);
+
+      if (attempt === retries) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+};
+
 const register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -110,29 +131,29 @@ const register = async (req, res) => {
 
     const token = crypto.randomUUID();
 
-    const newUser = await User.create({
-      username,
-      email,
-      password: hashedPassword,
-      status: "pending",
-      token,
-    });
-
-    try {
-      const mailOptions = {
-        from: process.env.SMTP_SENDER,
-        to: email,
-        subject: "Chill user activation mail",
-        text: `
+    const mailOptions = {
+      from: process.env.SMTP_SENDER,
+      to: email,
+      subject: "Chill user activation mail",
+      text: `
       Hi there!
 
       Thanks for signing up for an Chill account!
 
       To confirm your email, simply go to: http://localhost:3000/api/v1/activation/${token}
       `,
-      };
+    };
 
-      await mailTransporter.sendMail(mailOptions);
+    try {
+      await sendMailWithRetry(mailTransporter, mailOptions);
+
+      const newUser = await User.create({
+        username,
+        email,
+        password: hashedPassword,
+        status: "pending",
+        token,
+      });
 
       return res.status(201).json({
         success: true,
@@ -140,11 +161,10 @@ const register = async (req, res) => {
         data: newUser,
       });
     } catch (mailError) {
-      return res.status(201).json({
-        success: true,
-        message:
-          "Register success, but failed to sent activation mail. Please contact support",
-        data: newUser,
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send activation email, please try again",
+        data: mailError?.message || String(mailError),
       });
     }
   } catch (error) {

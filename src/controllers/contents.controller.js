@@ -61,11 +61,13 @@ const getContents = async (req, res) => {
       limit: queryLimit,
       ...filter
     } = req.query;
+    let page = parseInt(queryPage) || 1;
     let limit = parseInt(queryLimit) || 5;
-    let offset = (queryPage - 1) * limit;
+    let offset = (page - 1) * limit;
 
     const queryOptions = {
       where: {},
+      page,
       limit,
       offset,
     };
