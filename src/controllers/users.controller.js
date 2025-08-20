@@ -1,25 +1,26 @@
-const usersService = require("../services/users.service");
+const User = require("../models/users.model");
 
 const create = async (req, res) => {
   try {
-    const { username, email, password, created_at } = req.body;
+    const { username, email, password } = req.body;
 
-    if (!username || !email || !password || !created_at) {
+    if (!username || !email || !password) {
       return res.status(400).json({
-        succes: false,
-        message: "username, email, password, created_at are required",
+        success: false,
+        message: "username, email, password are required",
       });
     }
 
-    const userData = req.body;
+    const newUser = await User.create({
+      username,
+      email,
+      password,
+    });
 
-    const userId = await usersService.create(userData);
-    userData.usersId = userId;
-
-    return res.status(201).json({ succes: true, data: userData });
+    return res.status(201).json({ success: true, data: newUser });
   } catch (err) {
     console.error("Error creating user: ", err);
-    if (err.code === "ER_DUP_ENTRY") {
+    if (err.name === "SequelizeUniqueConstraintError") {
       return res.status(409).json({ message: "Username already exist" });
     }
     res
@@ -30,15 +31,15 @@ const create = async (req, res) => {
 
 const getUsers = async (req, res) => {
   try {
-    const users = await usersService.getUsers();
+    const users = await User.findAll();
 
-    res.status(200).json({ data: users, succes: false });
+    res.status(200).json({ data: users, success: true });
   } catch (err) {
     console.error("Error fethcing users");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -46,22 +47,22 @@ const getUsers = async (req, res) => {
 const getUsersById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await usersService.getUsersById(id);
+    const user = await User.findByPk(id);
 
     if (!user) {
-      res.status(404).json({
+      return res.status(404).json({
         message: "User not found",
         success: false,
       });
     }
 
-    res.status(200).json({ data: user, succes: false });
+    res.status(200).json({ data: user, success: true });
   } catch (err) {
     console.error("Error fethcing user");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -69,22 +70,35 @@ const getUsersById = async (req, res) => {
 const updateUsersById = async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await usersService.updateUsersById(id, req.body);
+    const updateData = req.body;
 
-    if (!updated) {
-      res.status(404).json({
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "username, email, password, created_at are required",
+      });
+    }
+
+    const [updateRows] = await User.update(updateData, {
+      where: {
+        user_id: id,
+      },
+    });
+
+    if (updateRows === 0) {
+      return res.status(404).json({
         message: "user not found",
         success: false,
       });
     }
 
-    res.status(200).json({ data: id, ...req.body, succes: true });
+    res.status(200).json({ data: id, ...req.body, success: true });
   } catch (err) {
     console.error("Error fethcing users");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -92,17 +106,21 @@ const updateUsersById = async (req, res) => {
 const deleteUsersById = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await usersService.deleteUsersById(id);
+    const deleted = await User.destroy({
+      where: {
+        user_id: id,
+      },
+    });
 
     if (!deleted) {
-      res.status(404).json({
-        message: "user not found",
+      return res.status(404).json({
+        message: "User not found",
         success: false,
       });
     }
 
     res.status(200).json({
-      message: "user successfully deleted",
+      message: "User successfully deleted",
       success: true,
     });
   } catch (err) {

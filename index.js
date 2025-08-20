@@ -15,7 +15,16 @@ app.use("/health", (req, res) => {
   res.send({ message: "OK" });
 });
 
-app.listen(port, () => {
-  db.query("SELECT 1");
-  console.log(`Server is starting at ${port}`);
-});
+(async () => {
+  try {
+    await db.authenticate();
+    console.log("Successfully connected to database using Sequelize");
+
+    app.listen(port, () => {
+      console.log(`Server is running at port ${port}`);
+    });
+  } catch (error) {
+    console.error("Error connecting to database: ", error.message);
+    process.exit(1);
+  }
+})();

@@ -1,4 +1,5 @@
-const contentsService = require("../services/contents.service");
+const Content = require("../models/contents.model");
+const { Op } = require("sequelize");
 
 const create = async (req, res) => {
   try {
@@ -20,18 +21,25 @@ const create = async (req, res) => {
       !cover_img
     ) {
       return res.status(400).json({
-        succes: false,
-        message:
-          "content_type, title, description, release_year, video_url, cover_img are required",
+        success: false,
+        message: "Required field cannot be empty",
       });
     }
 
-    const contentData = req.body;
+    const contentData = await Content.create({
+      content_type,
+      title,
+      description,
+      release_year,
+      video_url,
+      cover_img,
+    });
 
-    const contentId = await contentsService.create(contentData);
-    contentData.contentId = contentId;
-
-    return res.status(201).json({ succes: true, data: contentData });
+    return res.status(201).json({
+      success: true,
+      message: "Succesfully add content",
+      data: contentData,
+    });
   } catch (err) {
     console.error("Error creating user: ", err);
     if (err.code === "ER_DUP_ENTRY") {
@@ -45,15 +53,58 @@ const create = async (req, res) => {
 
 const getContents = async (req, res) => {
   try {
-    const contents = await contentsService.getContents();
+    const {
+      sortBy,
+      order = "ASC",
+      search,
+      page: queryPage,
+      limit: queryLimit,
+      ...filter
+    } = req.query;
+    let limit = parseInt(queryLimit) || 5;
+    let offset = (queryPage - 1) * limit;
 
-    res.status(200).json({ data: contents, succes: false });
+    const queryOptions = {
+      where: {},
+      limit,
+      offset,
+    };
+
+    // Filter
+    if (Object.keys(filter).length > 0) {
+      queryOptions.where = { ...filter };
+    }
+
+    // Search
+    if (search) {
+      queryOptions.where[Op.or] = [
+        { title: { [Op.like]: `${search}%` } },
+        { description: { [Op.like]: `${search}%` } },
+      ];
+    }
+
+    // Sort
+    if (sortBy) {
+      queryOptions.order = [[sortBy, order.toUpperCase()]];
+    }
+
+    const contents = await Content.findAll(queryOptions);
+
+    if (contents.length === 0) {
+      return res.status(404).json({
+        data: contents,
+        success: false,
+        message: "No content found",
+      });
+    }
+
+    res.status(200).json({ data: contents, success: true });
   } catch (err) {
     console.error("Error fethcing contents");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -61,7 +112,7 @@ const getContents = async (req, res) => {
 const getContentsById = async (req, res) => {
   try {
     const { id } = req.params;
-    const content = await contentsService.getContentsById(id);
+    const content = await Content.findByPk(id);
 
     if (!content) {
       res.status(404).json({
@@ -70,13 +121,13 @@ const getContentsById = async (req, res) => {
       });
     }
 
-    res.status(200).json({ data: content, succes: false });
+    res.status(200).json({ data: content, success: true });
   } catch (err) {
     console.error("Error fethcing contents");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -84,22 +135,35 @@ const getContentsById = async (req, res) => {
 const updateContentsById = async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await contentsService.updateContentsById(id, req.body);
+    const updateData = req.body;
 
-    if (!updated) {
-      res.status(404).json({
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Required field cannot be empty",
+      });
+    }
+
+    const [updateRows] = await User.update(updateData, {
+      where: {
+        content_id: id,
+      },
+    });
+
+    if (updateRows === 0) {
+      return res.status(404).json({
         message: "Content not found",
         success: false,
       });
     }
 
-    res.status(200).json({ data: id, ...req.body, succes: true });
+    res.status(200).json({ data: id, ...req.body, success: true });
   } catch (err) {
     console.error("Error fethcing contents");
     res.status(500).json({
       message: "Internal Server Error",
       error: err.message,
-      succes: false,
+      success: false,
     });
   }
 };
@@ -107,7 +171,11 @@ const updateContentsById = async (req, res) => {
 const deleteContentsById = async (req, res) => {
   try {
     const { id } = req.params;
-    const deleted = await contentsService.deleteContentsById(id);
+    const deleted = await Content.destroy({
+      where: {
+        content_id: id,
+      },
+    });
 
     if (!deleted) {
       res.status(404).json({
